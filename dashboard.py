@@ -152,43 +152,300 @@ if opcion_menu == "📊 Resumen Ceo Diario" and not df.empty:
 
     # fin parte 1 caja 2
 
-    # ==========================================
-# PROYECCIONES Y TOP MARGEN REAL
 # ==========================================
-elif opcion_menu == "📈 Resumen Ceo & Proyecciones" and not df.empty:
-    st.title("📈 Resumen Ceo & Proyecciones")
-    df_f = obtener_filtros("proj")
-    df_m = df_f.groupby('MES').agg({'VALOR-ENVIADO':'sum', 'VALOR':'sum'}).reset_index()
-    df_m['ORDEN'] = df_m['MES'].apply(lambda m: orden_meses.get(m.upper(), 99))
-    df_m = df_m.sort_values(by='ORDEN')
-    fig_m = go.Figure()
-    fig_m.add_trace(go.Bar(x=df_m['MES'], y=df_m['VALOR-ENVIADO'], name="Enviado", marker_color='#2ca02c'))
-    fig_m.add_trace(go.Scatter(x=df_m['MES'], y=(df_m['VALOR-ENVIADO']/df_m['VALOR']*100).fillna(0), name="FR %", yaxis="y2", mode="lines+markers", line=dict(color="red", width=3)))
-    fig_m.update_layout(yaxis=dict(tickformat=",.1s"), yaxis2=dict(overlaying="y", side="right", tickformat=".1f"), legend=dict(x=0, y=1.1, orientation="h"))
-    st.plotly_chart(fig_m, use_container_width=True)
+# MÓDULO: 📈 RESUMEN CEO & PROYECCIONES (CORREGIDO)
+# ==========================================
+if opcion_menu == "📈 Resumen Ceo & Proyecciones":
+    st.markdown("<h2 style='color: #1A365D; font-family: serif;'>📈 Resumen Ceo & Modelos de Proyección</h2>", unsafe_allow_html=True)
 
-elif opcion_menu == "💰 Top Margen Real" and not df.empty:
-    st.title("💰 Top Margen Real (Utilidad Real)")
-    df_f = obtener_filtros("marg")
-    st.markdown("---")
+    # --- 1. FUNCIÓN DE FORMATEO CORPORATIVO (Q, M, K) ---
+    def formatear_quetzales(valor):
+        if abs(valor) >= 1_000_000:
+            return f"Q {valor / 1_000_000:.2f} M"
+        elif abs(valor) >= 1_000:
+            return f"Q {valor / 1_000:.2f} K"
+        else:
+            return f"Q {valor:,.2f}"
+
+    # --- 2. CONFIGURACIÓN DE FILTROS POR DEFECTO ---
+    fecha_actual = pd.Timestamp.now()
+    ano_actual_str = str(fecha_actual.year)
+
+    lista_tiendas = ["Todas las tiendas"] + sorted([str(x) for x in df['NOMBRE TIENDA'].unique() if pd.notna(x)])
+    lista_anos = ["Todos los años"] + sorted([str(x) for x in df['AÑO'].unique() if x != 0])
+    lista_meses = ["Todos los meses"] + sorted([str(x) for x in df['MES'].unique() if pd.notna(x)], key=lambda m: orden_meses.get(m.upper(), 99))
+
     c1, c2, c3 = st.columns(3)
-    c1.metric("Ventas (Enviado)", f"Q{df_f['VALOR-ENVIADO'].sum():,.2f}")
-    c2.metric("Costo Base", f"Q{df_f['COSTO'].sum():,.2f}")
-    c3.metric("🔥 Retorno Neto", f"Q{df_f['RETORNO-NETO'].sum():,.2f}")
+    with c1: 
+        t_sel = st.selectbox("Tienda Destino", options=lista_tiendas, key="p_tienda")
+    with c2: 
+        idx_ano = lista_anos.index(ano_actual_str) if ano_actual_str in lista_anos else 0
+        a_sel = st.selectbox("Año Fiscal", options=lista_anos, index=idx_ano, key="p_ano")
+    with c3: 
+        # CORRECCIÓN: Por defecto ahora selecciona "Todos los meses"
+        idx_mes = lista_meses.index("Todos los meses") if "Todos los meses" in lista_meses else 0
+        m_sel = st.selectbox("Mes Operativo", options=lista_meses, index=idx_mes, key="p_mes")
+
+    # Aplicación de filtros sobre el DataFrame
+    df_proyecciones = df.copy()
+    if t_sel != "Todas las tiendas": 
+        df_proyecciones = df_proyecciones[df_proyecciones['NOMBRE TIENDA'] == t_sel]
+    if a_sel != "Todos los años": 
+        df_proyecciones = df_proyecciones[df_proyecciones['AÑO'] == int(a_sel)]
+    if m_sel != "Todos los meses": 
+        df_proyecciones = df_proyecciones[df_proyecciones['MES'] == m_sel]
+
+    if df_proyecciones.empty:
+        st.warning("⚠️ No se encontraron registros de planta para los filtros seleccionados.")
+        st.stop()
+
+    # --- 3. CÁLCULO DE MÉTRICAS Y PROYECCIÓN MENSUAL ---
+    # Agrupamos por mes histórico
+    df_mensual = df_proyecciones.groupby('MES')['VALOR-ENVIADO'].sum().reset_index()
+    df_mensual['ORDEN'] = df_mensual['MES'].str.upper().map(orden_meses)
+    df_mensual = df_mensual.sort_values(by='ORDEN').reset_index(drop=True)
     
-    df_p = df_f.groupby(['PRODUCTO', 'DESCRIPCION'])['RETORNO-NETO'].sum().reset_index().sort_values(by='RETORNO-NETO', ascending=False).head(15)
-    fig_p = px.bar(df_p, x='RETORNO-NETO', y='DESCRIPCION', orientation='h', color='RETORNO-NETO', text_auto=',.2f', color_continuous_scale='Viridis', title="🏆 Top 15 mejores productos")
-    fig_p.update_layout(yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig_p, use_container_width=True)
+    monto_total_periodo = df_mensual['VALOR-ENVIADO'].sum()
+    promedio_mensual = df_mensual['VALOR-ENVIADO'].mean() if not df_mensual.empty else 0
     
-    df_matriz = df_f.groupby(['GRUPO', 'FAMILIA', 'PRODUCTO', 'DESCRIPCION']).agg({'CANTIDAD-ENV': 'sum', 'VALOR-ENVIADO': 'sum', 'COSTO': 'sum', 'RETORNO-NETO': 'sum'}).reset_index().sort_values(by='RETORNO-NETO', ascending=False)
-    df_m_show = df_matriz.copy()
-    for col in ['VALOR-ENVIADO', 'COSTO', 'RETORNO-NETO']: df_m_show[col] = df_m_show[col].map('Q{:,.2f}'.format)
-    df_m_show['CANTIDAD-ENV'] = df_m_show['CANTIDAD-ENV'].map('{:,.0f}'.format)
-    st.subheader("📋 Matriz de Auditoría de Margen")
-    st.dataframe(df_m_show, use_container_width=True)
+    # Determinar el último mes registrado para proyectar el siguiente
+    if not df_mensual.empty:
+        ultimo_mes_nombre = df_mensual.iloc[-1]['MES']
+        ultimo_idx = orden_meses.get(ultimo_mes_nombre.upper(), 6)
+        idx_siguiente = (ultimo_idx % 12) + 1
+        mes_siguiente_nombre = [k for k, v in orden_meses.items() if v == idx_siguiente][0]
+        
+        monto_ultimo_mes = df_mensual.iloc[-1]['VALOR-ENVIADO']
+        # Proyección del mes siguiente aplicando crecimiento inercial (+5%)
+        monto_proyectado_mes_siguiente = monto_ultimo_mes * 1.05
+    else:
+        mes_siguiente_nombre = "SIGUIENTE"
+        monto_ultimo_mes = 0
+        monto_proyectado_mes_siguiente = 0
+
+    # --- 4. FILA DE TARJETAS EJECUTIVAS PREMIUM (CON FORMATO Q, M, K) ---
+    k1, k2, k3 = st.columns(3)
+    with k1:
+        st.metric(
+            label=f"Acumulado Real Seleccionado", 
+            value=formatear_quetzales(monto_total_periodo), 
+            delta=f"{df_mensual['MES'].nunique()} meses evaluados"
+        )
+    with k2:
+        st.metric(
+            label=f"Cierre Último Mes ({ultimo_mes_nombre if 'ultimo_mes_nombre' in locals() else 'N/A'})", 
+            value=formatear_quetzales(monto_ultimo_mes), 
+            delta=f"Promedio mensual: {formatear_quetzales(promedio_mensual)}",
+            delta_color="normal"
+        )
+    with k3:
+        st.metric(
+            label=f"🔮 Proyección Objetivo ({mes_siguiente_nombre})", 
+            value=formatear_quetzales(monto_proyectado_mes_siguiente), 
+            delta="Objetivo de crecimiento: +5.0% vs Cierre",
+            delta_color="inverse"
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- 5. 📈 GRÁFICA DE TENDENCIA MENSUAL CON PROYECCIÓN ---
+    st.markdown(f"### 📊 Tendencia Histórica Mensual y Proyección {mes_siguiente_nombre}")
+    
+    # Construcción de la matriz de datos para el gráfico
+    meses_grafica = df_mensual['MES'].tolist()
+    valores_reales = df_mensual['VALOR-ENVIADO'].tolist()
+    
+    # Añadimos el mes siguiente a la línea de tiempo de la gráfica
+    meses_totales = meses_grafica + [mes_siguiente_nombre]
+    
+    fig_proyecciones = go.Figure()
+
+    # Histórico real
+    fig_proyecciones.add_trace(go.Scatter(
+        x=meses_grafica, 
+        y=valores_reales,
+        mode='lines+markers', 
+        name='Histórico Real',
+        line=dict(color='#1A365D', width=4),
+        hovertemplate='Mes: %{x}<br>Real: Q %{y:,.2f}'
+    ))
+
+    # Proyección intermensual (conecta el último punto real con la meta del mes siguiente)
+    x_proy = [meses_grafica[-1], mes_siguiente_nombre] if len(meses_grafica) > 0 else [mes_siguiente_nombre]
+    y_proy = [valores_reales[-1], monto_proyectado_mes_siguiente] if len(valores_reales) > 0 else [monto_proyectado_mes_siguiente]
+    
+    fig_proyecciones.add_trace(go.Scatter(
+        x=x_proy, 
+        y=y_proy,
+        mode='lines+markers', 
+        name=f'🔮 Proyección {mes_siguiente_nombre}',
+        line=dict(color='#C29B68', width=3, dash='dash'),
+        marker=dict(size=10, symbol='diamond'),
+        hovertemplate='Mes: %{x}<br>Proyección: Q %{y:,.2f}'
+    ))
+
+    # Estilos del layout gráfico
+    fig_proyecciones.update_layout(
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(title="Meses del Ejercicio", gridcolor='#EAE6DF'),
+        yaxis=dict(title="Monto Facturado (Q)", gridcolor='#EAE6DF')
+    )
+    
+    st.plotly_chart(fig_proyecciones, use_container_width=True)
 
     # fin caja 2 parte 2
+
+
+# ==========================================
+# MÓDULO: 💰 TOP MARGEN REAL (ACTUALIZADO)
+# ==========================================
+if opcion_menu == "💰 Top Margen Real":
+    st.markdown("<h2 style='color: #1A365D; font-family: serif;'>💰 Análisis de Rentabilidad y Top Margen Real</h2>", unsafe_allow_html=True)
+
+    # --- 1. FUNCIÓN DE FORMATEO CORPORATIVO (Q, M, K) ---
+    def formatear_quetzales(valor):
+        if abs(valor) >= 1_000_000:
+            return f"Q {valor / 1_000_000:.2f} M"
+        elif abs(valor) >= 1_000:
+            return f"Q {valor / 1_000:.2f} K"
+        else:
+            return f"Q {valor:,.2f}"
+
+    # --- 2. CONFIGURACIÓN DE FILTROS CORPORATIVOS ---
+    fecha_actual = pd.Timestamp.now()
+    ano_actual_str = str(fecha_actual.year)
+
+    lista_tiendas = ["Todas las tiendas"] + sorted([str(x) for x in df['NOMBRE TIENDA'].unique() if pd.notna(x)])
+    lista_anos = ["Todos los años"] + sorted([str(x) for x in df['AÑO'].unique() if x != 0])
+    lista_meses = ["Todos los meses"] + sorted([str(x) for x in df['MES'].unique() if pd.notna(x)], key=lambda m: orden_meses.get(m.upper(), 99))
+
+    c1, c2, c3 = st.columns(3)
+    with c1: 
+        t_sel = st.selectbox("Tienda Destino", options=lista_tiendas, key="m_tienda")
+    with c2: 
+        idx_ano = lista_anos.index(ano_actual_str) if ano_actual_str in lista_anos else 0
+        a_sel = st.selectbox("Año Fiscal", options=lista_anos, index=idx_ano, key="m_ano")
+    with c3: 
+        idx_mes = lista_meses.index("Todos los meses") if "Todos los meses" in lista_meses else 0
+        m_sel = st.selectbox("Mes Operativo", options=lista_meses, index=idx_mes, key="m_mes")
+
+    # Aplicación de filtros
+    df_margen = df.copy()
+    if t_sel != "Todas las tiendas": 
+        df_margen = df_margen[df_margen['NOMBRE TIENDA'] == t_sel]
+    if a_sel != "Todos los años": 
+        df_margen = df_margen[df_margen['AÑO'] == int(a_sel)]
+    if m_sel != "Todos los meses": 
+        df_margen = df_margen[df_margen['MES'] == m_sel]
+
+    if df_margen.empty:
+        st.warning("⚠️ No se encontraron registros de rentabilidad para los filtros seleccionados.")
+        st.stop()
+
+    # --- 3. CÁLCULOS MACRO ---
+    enviado_total = df_margen['VALOR-ENVIADO'].sum()
+    costo_total = df_margen['COSTO'].sum()
+    margen_neto_total = df_margen['RETORNO-NETO'].sum()
+    porcentaje_margen_global = (margen_neto_total / enviado_total * 100) if enviado_total > 0 else 0
+
+    # --- 4. TARJETAS EJECUTIVAS BRUSELAS STYLE ---
+    k1, k2, k3 = st.columns(3)
+    with k1:
+        st.metric(label="Monto Total Enviado", value=formatear_quetzales(enviado_total), delta="Ingreso Bruto de Planta")
+    with k2:
+        st.metric(label="Costo de Producción Total", value=formatear_quetzales(costo_total), delta=f"Ratio de Costo: {(costo_total / enviado_total * 100) if enviado_total > 0 else 0:.1f}%", delta_color="inverse")
+    with k3:
+        st.metric(label="Margen Real Obtenido", value=formatear_quetzales(margen_neto_total), delta=f"Eficiencia: {porcentaje_margen_global:.1f}% del enviado", delta_color="normal")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- 5. FILA SUPERIOR DE GRÁFICOS: FAMILIAS Y GRUPOS ---
+    g1, g2 = st.columns(2)
+
+    with g1:
+        st.markdown("### 🏆 Top 10 Familias por Margen Neto (Q)")
+        df_fam_margen = df_margen.groupby('FAMILIA')['RETORNO-NETO'].sum().reset_index()
+        df_fam_margen = df_fam_margen.sort_values(by='RETORNO-NETO', ascending=True).tail(10)
+        
+        fig_fam = px.bar(
+            df_fam_margen, x='RETORNO-NETO', y='FAMILIA', orientation='h',
+            color_discrete_sequence=['#1A365D'],
+            labels={'RETORNO-NETO': 'Margen Neto (Q)', 'FAMILIA': 'Familia'}
+        )
+        fig_fam.update_traces(marker_line_color='#C29B68', marker_line_width=1, hovertemplate='Familia: %{y}<br>Margen: Q %{x:,.2f}')
+        fig_fam.update_layout(margin=dict(l=20, r=20, t=20, b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis=dict(gridcolor='#EAE6DF'))
+        st.plotly_chart(fig_fam, use_container_width=True)
+
+    with g2:
+        st.markdown("### 📉 Distribución de Rentabilidad Operativa por Grupo")
+        df_grupo_margen = df_margen.groupby('GRUPO').agg({'VALOR-ENVIADO': 'sum', 'RETORNO-NETO': 'sum'}).reset_index()
+        df_grupo_margen = df_grupo_margen.sort_values(by='RETORNO-NETO', ascending=False).head(15)
+
+        fig_scat = go.Figure()
+        fig_scat.add_trace(go.Bar(x=df_grupo_margen['GRUPO'], y=df_grupo_margen['VALOR-ENVIADO'], name='Valor Enviado', marker_color='#1A365D'))
+        fig_scat.add_trace(go.Bar(x=df_grupo_margen['GRUPO'], y=df_grupo_margen['RETORNO-NETO'], name='Margen Real', marker_color='#C29B68'))
+        fig_scat.update_layout(
+            barmode='group', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            margin=dict(l=20, r=20, t=20, b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            yaxis=dict(gridcolor='#EAE6DF'), xaxis=dict(tickangle=45)
+        )
+        st.plotly_chart(fig_scat, use_container_width=True)
+
+    # --- 6. FILA INFERIOR NUEVA: GRÁFICO DE TIENDAS CON SELECTOR DE RANGO DENTRO DE LA PÁGINA ---
+    st.markdown("<hr style='border: 0.5px solid #EAE6DF;'>", unsafe_allow_html=True)
+    
+    # Encabezado con el selector dinámico al lado usando columnas
+    c_tit, c_opt = st.columns([2, 1])
+    with c_tit:
+        st.markdown("### 🏪 Rendimiento de Margen Neto por Tienda Destino")
+    with c_opt:
+        top_tiendas_opcion = st.selectbox(
+            "Visualizar rango:",
+            options=["Top 10 mejores", "Top 20 mejores", "Todas las tiendas"],
+            index=0,
+            key="opt_top_tiendas"
+        )
+
+    # Procesamiento dinámico del Top de Tiendas según la opción elegida
+    df_tiendas_margen = df_margen.groupby('NOMBRE TIENDA')['RETORNO-NETO'].sum().reset_index()
+    
+    if top_tiendas_opcion == "Top 10 mejores":
+        df_tiendas_margen = df_tiendas_margen.sort_values(by='RETORNO-NETO', ascending=True).tail(10)
+    elif top_tiendas_opcion == "Top 20 mejores":
+        df_tiendas_margen = df_tiendas_margen.sort_values(by='RETORNO-NETO', ascending=True).tail(20)
+    else: # Todas las tiendas
+        df_tiendas_margen = df_tiendas_margen.sort_values(by='RETORNO-NETO', ascending=True)
+
+    fig_tiendas = px.bar(
+        df_tiendas_margen, x='RETORNO-NETO', y='NOMBRE TIENDA', orientation='h',
+        color_discrete_sequence=['#C29B68'], # Dorado elegante para diferenciarlo de familias
+        labels={'RETORNO-NETO': 'Margen Neto (Q)', 'NOMBRE TIENDA': 'Tienda'}
+    )
+    fig_tiendas.update_traces(marker_line_color='#1A365D', marker_line_width=1, hovertemplate='Tienda: %{y}<br>Margen: Q %{x:,.2f}')
+    fig_tiendas.update_layout(
+        margin=dict(l=20, r=20, t=10, b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(gridcolor='#EAE6DF'), yaxis=dict(dtick=1)
+    )
+    st.plotly_chart(fig_tiendas, use_container_width=True)
+
+    # --- 7. TABLA AUDITORÍA SKUS INFERIOR ---
+    st.markdown("### 🔍 Auditoría de Margen Real por Descripción de Producto")
+    df_sku = df_margen.groupby(['FAMILIA', 'DESCRIPCION']).agg({
+        'CANTIDAD-ENV': 'sum', 'VALOR-ENVIADO': 'sum', 'COSTO': 'sum', 'RETORNO-NETO': 'sum'
+    }).reset_index()
+    df_sku['% Margen'] = (df_sku['RETORNO-NETO'] / df_sku['VALOR-ENVIADO'] * 100).fillna(0)
+    df_sku = df_sku.sort_values(by='RETORNO-NETO', ascending=False).reset_index(drop=True)
+
+    st.dataframe(
+        df_sku.style.format({
+            'CANTIDAD-ENV': '{:,.0f}', 'VALOR-ENVIADO': 'Q {:,.2f}', 'COSTO': 'Q {:,.2f}', 'RETORNO-NETO': 'Q {:,.2f}', '% Margen': '{:.1f}%'
+        }),
+        use_container_width=True, hide_index=True
+    )
 
     # ==========================================
 # CALENDARIOS, COBROS Y PANEL DE CONTROL HÍBRIDO
@@ -238,33 +495,95 @@ elif opcion_menu == "📥 Actualizar e Internet (GitHub)":
                 st.success("✅ Archivo convertido a Parquet y auditoría registrada localmente. ¡Dale F5!")
                 st.balloons()
             except Exception as ex: st.error(f"Error en estructura: {ex}")
-    with col_n:
-            st.markdown("### ☁️ Sincronizar desde GitHub")
-            if st.button("🗂️ Ejecutar Descarga desde GitHub", use_container_width=True):
-                with st.spinner("Descargando base de datos desde la nube..."):
-                    try:
-                        # URL Fija con el formato exacto requerido por internet:
-                        url_parquet = "https://githubusercontent.com"
-                        
-                        response = requests.get(url_parquet, timeout=60)
-                        
-                        if response.status_code == 200:
-                            with open("planta_historico.parquet", "wb") as f:
-                                f.write(response.content)
-                            
-                            f_str = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")
-                            msg = f"Sincronización en la Nube exitosa el {f_str} desde GitHub Principal."
-                            with open("planta_auditoria.txt", "w", encoding="utf-8") as f: 
-                                f.write(msg)
-                                
-                            st.success("🚀 ¡Base de datos descargada con éxito! Por favor, recarga el navegador (F5) para habilitar el menú principal.")
-                            st.balloons()
-                        else:
-                            st.error(f"❌ Archivo no encontrado en la nube. Código GitHub: {response.status_code}.")
-                    except Exception as e:
-                        st.error(f"Error de conexión con la nube: {e}")
+    
+    with col_n: # Usamos col_n que es la columna de tu layout de planta
+        st.markdown("### ☁️ Inyección local y Envío a GitHub")
+    if st.button("🔄 Procesar DespBoard y Subir a GitHub", type="primary", use_container_width=True):
+        with st.spinner("Sincronizando matriz de datos interna de forma automática..."):
+            try:
+                # 1. Definir los nombres de archivos para el proyecto de Planta
+                archivo_maestro_local = "DespBoard.txt"
+                archivo_historico_parquet = "planta_historico.parquet"
+                archivo_auditoria = "planta_auditoria.txt"
+                
+                # Si no está en la raíz, lo busca en la carpeta descargas del usuario de Windows
+                if not os.path.exists(archivo_maestro_local):
+                    ruta_usuario_win = os.path.expanduser("~")
+                    archivo_maestro_local = os.path.join(ruta_usuario_win, "Downloads", "DespBoard.txt")
+                
+                if os.path.exists(archivo_maestro_local):
+                    # 2. Cargar el archivo de texto plano tabulado
+                    df_nuevo = pd.read_csv(archivo_maestro_local, sep="\t", encoding='latin1', low_memory=False, on_bad_lines='skip')
+                    
+                    # 3. Homologación y tipado de datos estricto de Planta (idéntico a tu motor de carga)
+                    df_nuevo['FECHA'] = pd.to_datetime(df_nuevo['FECHA'], errors='coerce')
+                    df_nuevo['AÑO'] = pd.to_numeric(df_nuevo['AÑO'], errors='coerce').fillna(0).astype(int)
+                    df_nuevo['DIA'] = pd.to_numeric(df_nuevo['DIA'], errors='coerce').fillna(0).astype(int)
+                    df_nuevo['NODIA'] = pd.to_numeric(df_nuevo['NODIA'], errors='coerce').fillna(0).astype(int)
+                    
+                    if 'DOCUMENTO' in df_nuevo.columns: 
+                        df_nuevo['DOCUMENTO'] = df_nuevo['DOCUMENTO'].astype(str).str.strip()
+                    
+                    for col in ['NOMBRE TIENDA', 'MES', 'FAMILIA', 'GRUPO', 'DESCRIPCION']:
+                        if col in df_nuevo.columns: 
+                            df_nuevo[col] = df_nuevo[col].astype(str).fillna("No Especificado").str.strip()
+                    
+                    for col in ['VALOR-ENVIADO', 'COSTO', 'VALOR', 'CANTIDAD-ENV', 'CANTIDAD-REQ']:
+                        if col in df_nuevo.columns: 
+                            df_nuevo[col] = pd.to_numeric(df_nuevo[col], errors='coerce').fillna(0)
+                    
+                    df_nuevo['RETORNO-NETO'] = df_nuevo['VALOR-ENVIADO'] - df_nuevo['COSTO']
+                    
+                    # 4. Guardar localmente en formato Parquet optimizado
+                    df_nuevo.to_parquet(archivo_historico_parquet, index=False)
+                    
+                    # Crear archivo de auditoría local
+                    f_str = pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')
+                    msg = f"Sincronización en la Nube exitosa el {f_str} desde GitHub Principal."
+                    with open(archivo_auditoria, "w", encoding="utf-8") as f: 
+                        f.write(msg)
+                    
+                    st.success(f"¡Matriz '{archivo_maestro_local}' procesada con éxito ({len(df_nuevo):,} filas)!")
+                    
+                    # 5. --- MOTOR DE AUTOMATIZACIÓN DE GITHUB EN LÍNEA ---
+                    import subprocess
+                    st.info("🚀 Iniciando despliegue automático a GitHub...")
+                    
+                    # Comandos de Git adaptados a los archivos de Planta
+                    comandos_git = [
+                        ["git", "add", archivo_historico_parquet, archivo_auditoria],
+                        ["git", "commit", "-m", f"Inyeccion automatica planta_historico.parquet - {f_str}"],
+                        ["git", "push", "origin", "main"]
+                    ]
+                    
+                    error_detectado = False
+                    for cmd in comandos_git:
+                        resultado = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+                        if resultado.returncode != 0 and "nothing to commit" not in resultado.stderr.lower():
+                            st.error(f"Error en comando {' '.join(cmd)}: {resultado.stderr}")
+                            error_detectado = True
+                            break
+                    
+                    if not error_detectado:
+                        st.success("¡Repositorio de GitHub actualizado con la nueva base transaccional de Planta!")
+                    
+                    # Limpiar caché de la app para que lea inmediatamente el nuevo Parquet
+                    st.cache_data.clear()
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ No se detectó el archivo 'DespBoard.txt' en la carpeta del script ni en Descargas.")
+            except Exception as e: 
+                st.error(f"Error en la operación: {str(e)}")
 
-                        
+
+
+
+
+
+
+
+
 
 
 
