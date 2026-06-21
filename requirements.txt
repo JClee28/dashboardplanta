@@ -1,5 +1,7 @@
 streamlit
 pandas
 plotly
-pyarrow
 streamlit-authenticator
+pyarrow
+requests
+matplotlib
