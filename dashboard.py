@@ -447,6 +447,190 @@ if opcion_menu == "💰 Top Margen Real":
         use_container_width=True, hide_index=True
     )
 
+# ==========================================
+# MÓDULO: 🏪 POR TIENDA & DIAS
+# ==========================================
+if opcion_menu == "🏪 Por Tienda & Dias":
+    st.markdown("<h2 style='color: #1A365D; font-family: serif;'>🏪 Análisis Operativo por Tiendas y Días de Despacho</h2>", unsafe_allow_html=True)
+
+    # --- 1. FUNCIÓN DE FORMATEO CORPORATIVO (Q, M, K) ---
+    def formatear_quetzales(valor):
+        if abs(valor) >= 1_000_000:
+            return f"Q {valor / 1_000_000:.2f} M"
+        elif abs(valor) >= 1_000:
+            return f"Q {valor / 1_000:.2f} K"
+        else:
+            return f"Q {valor:,.2f}"
+
+    # --- 2. CONFIGURACIÓN DE FILTROS CORPORATIVOS ---
+    fecha_actual = pd.Timestamp.now()
+    ano_actual_str = str(fecha_actual.year)
+
+    lista_tiendas = ["Todas las tiendas"] + sorted([str(x) for x in df['NOMBRE TIENDA'].unique() if pd.notna(x)])
+    lista_anos = ["Todos los años"] + sorted([str(x) for x in df['AÑO'].unique() if x != 0])
+    lista_meses = ["Todos los meses"] + sorted([str(x) for x in df['MES'].unique() if pd.notna(x)], key=lambda m: orden_meses.get(m.upper(), 99))
+
+    c1, c2, c3 = st.columns(3)
+    with c1: 
+        t_sel = st.selectbox("Tienda Destino", options=lista_tiendas, key="td_tienda")
+    with c2: 
+        idx_ano = lista_anos.index(ano_actual_str) if ano_actual_str in lista_anos else 0
+        a_sel = st.selectbox("Año Fiscal", options=lista_anos, index=idx_ano, key="td_ano")
+    with c3: 
+        idx_mes = lista_meses.index("Todos los meses") if "Todos los meses" in lista_meses else 0
+        m_sel = st.selectbox("Mes Operativo", options=lista_meses, index=idx_mes, key="td_mes")
+
+    # Aplicación de filtros
+    df_td = df.copy()
+    if t_sel != "Todas las tiendas": 
+        df_td = df_td[df_td['NOMBRE TIENDA'] == t_sel]
+    if a_sel != "Todos los años": 
+        df_td = df_td[df_td['AÑO'] == int(a_sel)]
+    if m_sel != "Todos los meses": 
+        df_td = df_td[df_td['MES'] == m_sel]
+
+    if df_td.empty:
+        st.warning("⚠️ No se encontraron registros para los filtros seleccionados.")
+        st.stop()
+
+    # --- 3. PROCESAMIENTO DE DÍAS DE LA SEMANA ---
+    # Convertimos la columna FECHA para extraer el día de la semana si no viene calculado
+    if 'FECHA' in df_td.columns:
+        df_td['FECHA_DT'] = pd.to_datetime(df_td['FECHA'], errors='coerce')
+        # Diccionario para mapear el nombre del día en español
+        dias_semana_map = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+        df_td['DIA_SEMANA'] = df_td['FECHA_DT'].dt.dayofweek.map(dias_semana_map)
+    else:
+        df_td['DIA_SEMANA'] = "No Especificado"
+
+    # Orden lógico para la visualización semanal
+    orden_dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+    # --- 4. GRÁFICOS DE ALTA DENSIDAD OPERATIVA ---
+    g1, g2 = st.columns(2)
+
+    with g1:
+        st.markdown("### 📅 Volumen de Envío por Día de la Semana")
+        df_semana = df_td.groupby('DIA_SEMANA')['VALOR-ENVIADO'].sum().reset_index()
+        
+        # Reordenar de lunes a domingo de forma segura
+        df_semana['DIA_SEMANA'] = pd.Categorical(df_semana['DIA_SEMANA'], categories=orden_dias_semana, ordered=True)
+        df_semana = df_semana.sort_values('DIA_SEMANA')
+
+        fig_sem = px.bar(
+            df_semana, x='DIA_SEMANA', y='VALOR-ENVIADO',
+            color_discrete_sequence=['#1A365D'],
+            labels={'VALOR-ENVIADO': 'Total Enviado (Q)', 'DIA_SEMANA': 'Día de la Semana'}
+        )
+        fig_sem.update_traces(marker_line_color='#C29B68', marker_line_width=1, hovertemplate='%{x}<br>Enviado: Q %{y:,.2f}')
+        fig_sem.update_layout(margin=dict(l=20, r=20, t=20, b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', yaxis=dict(gridcolor='#EAE6DF'))
+        st.plotly_chart(fig_sem, use_container_width=True)
+
+    with g2:
+        st.markdown("### 📊 Comportamiento de Envíos a lo largo del Mes")
+        
+        # Clonamos el DataFrame filtrado para evitar advertencias de copia
+        df_dia_calculado = df_td.copy()
+        
+        # Forzar que la columna FECHA sea de tipo datetime de forma correcta
+        df_dia_calculado['FECHA_DT'] = pd.to_datetime(df_dia_calculado['FECHA'], errors='coerce')
+        
+        # REPARACIÓN: Extraemos el día real (1 al 31) directamente de la fecha válida
+        df_dia_calculado['DIA_REAL'] = df_dia_calculado['FECHA_DT'].dt.day
+        
+        # Eliminamos cualquier registro que no tenga una fecha válida transaccional
+        df_dia_calculado = df_dia_calculado[df_dia_calculado['DIA_REAL'].notna() & (df_dia_calculado['DIA_REAL'] > 0)]
+        
+        if not df_dia_calculado.empty:
+            # Agrupación por el día real calculado por el sistema
+            df_dia_mes = df_dia_calculado.groupby('DIA_REAL')['VALOR-ENVIADO'].sum().reset_index()
+            df_dia_mes = df_dia_mes.sort_values(by='DIA_REAL')
+            
+            fig_dia_mes = go.Figure()
+            fig_dia_mes.add_trace(go.Scatter(
+                x=df_dia_mes['DIA_REAL'], 
+                y=df_dia_mes['VALOR-ENVIADO'],
+                mode='lines+markers', 
+                name='Monto Despachado',
+                line=dict(color='#C29B68', width=3),
+                marker=dict(size=6, color='#1A365D'),
+                hovertemplate='Día %{x}<br>Enviado: Q %{y:,.2f}'
+            ))
+            
+            # Ajustes visuales premium del eje de tiempo
+            fig_dia_mes.update_layout(
+                margin=dict(l=20, r=20, t=20, b=20), 
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(
+                    title="Día del Mes", 
+                    tickmode='linear', 
+                    dtick=2,             # Muestra marcas en el eje cada 2 días
+                    range=[1, 31],       # Obliga a mostrar la escala completa del mes
+                    gridcolor='#EAE6DF'
+                ),
+                yaxis=dict(title="Monto (Q)", gridcolor='#EAE6DF'),
+                hovermode="x unified"
+            )
+            st.plotly_chart(fig_dia_mes, use_container_width=True)
+        else:
+            st.info("ℹ️ Los registros seleccionados no contienen una columna de FECHA válida para graficar.")
+
+
+
+   # --- 5. MATRIZ DE CALOR / ANALÍTICA INTERNA REPARADA (DIAS 1-31) ---
+    st.markdown("### 🗺️ Matriz de Distribución Logística: Tiendas vs Días del Mes (Top 15 Tiendas)")
+    
+    # Clonamos el DataFrame filtrado para realizar la corrección de días sin alertas de copia
+    df_pivot_rep = df_td.copy()
+    
+    # Aseguramos el tipado datetime y extraemos el día transaccional real de la fecha
+    df_pivot_rep['FECHA_DT'] = pd.to_datetime(df_pivot_rep['FECHA'], errors='coerce')
+    df_pivot_rep['DIA_REAL'] = df_pivot_rep['FECHA_DT'].dt.day
+    
+    # Filtramos para conservar únicamente los registros que tengan fechas válidas
+    df_pivot_rep = df_pivot_rep[df_pivot_rep['DIA_REAL'].notna() & (df_pivot_rep['DIA_REAL'] > 0)]
+    
+    if not df_pivot_rep.empty:
+        # Filtrar por las top 15 tiendas con mayor volumen enviado para el orden visual
+        top_15_tiendas = df_pivot_rep.groupby('NOMBRE TIENDA')['VALOR-ENVIADO'].sum().nlargest(15).index
+        df_pivot_data = df_pivot_rep[df_pivot_rep['NOMBRE TIENDA'].isin(top_15_tiendas)]
+        
+        # Crear la tabla pivote utilizando la columna corregida 'DIA_REAL'
+        df_pivot = df_pivot_data.pivot_table(
+            values='VALOR-ENVIADO', 
+            index='NOMBRE TIENDA', 
+            columns='DIA_REAL', 
+            aggfunc='sum'
+        ).fillna(0)
+        
+        # Renderizado premium con mapa de calor integrado (Matplotlib requerido en requirements.txt)
+        
+        # --- FUNCIÓN DE FORMATEO COMPACTO PARA LA MATRIZ ---
+        def formato_matriz(valor):
+            if valor == 0:
+                return "-"  # Limpia la vista para días sin despachos
+            elif abs(valor) >= 1_000_000:
+                return f"{valor / 1_000_000:.1f}M"
+            elif abs(valor) >= 1_000:
+                return f"{valor / 1_000:.0f}K"
+            else:
+                return f"{valor:.0f}"
+
+        # Renderizado premium con formato de texto compacto y mapa de calor
+        st.dataframe(
+            df_pivot.style.background_gradient(cmap='Blues').format(formato_matriz),
+            use_container_width=True
+        )
+        
+        st.caption("💡 Los valores de la matriz representan los montos totales enviados consolidados. Las columnas del 1 al 31 muestran la distribución real por día del mes.")
+    else:
+        st.info("ℹ️ No hay datos de fechas válidas disponibles para estructurar la matriz mensual.")
+
+
+    
+
+
     # ==========================================
 # CALENDARIOS, COBROS Y PANEL DE CONTROL HÍBRIDO
 # ==========================================
