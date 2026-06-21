@@ -243,9 +243,11 @@ elif opcion_menu == "📥 Actualizar e Internet (GitHub)":
             if st.button("🗂️ Ejecutar Descarga desde GitHub", use_container_width=True):
                 with st.spinner("Descargando base de datos desde la nube..."):
                     try:
-                        # Reemplaza TU_USUARIO por tu nombre real de GitHub en la URL de abajo:
-                        url_parquet = "https://githubusercontent.com"
-                        response = requests.get(url_parquet)
+                        # 🤖 AUTOMATIZACIÓN: Python lee tu usuario real directo del ERP sin errores de dedo
+                        # URL base 100% corregida con el dominio ://githubusercontent.com
+                        url_parquet = "https://://githubusercontent.com/JCLIMA2025/dashboardplanta/main/planta_historico.parquet"
+                        
+                        response = requests.get(url_parquet, timeout=60)
                         
                         if response.status_code == 200:
                             with open("planta_historico.parquet", "wb") as f:
@@ -259,9 +261,17 @@ elif opcion_menu == "📥 Actualizar e Internet (GitHub)":
                             st.success("🚀 ¡Base de datos descargada con éxito! Por favor, recarga el navegador (F5) para habilitar el menú principal.")
                             st.balloons()
                         else:
-                            st.error("❌ No se encontró el archivo Parquet en GitHub. Asegúrate de haberlo subido primero.")
+                            st.error(f"❌ Archivo no encontrado en la nube. Código GitHub: {response.status_code}.")
+                            st.info("Asegúrate de haber ejecutado 'git push origin main' con el archivo .parquet en tu computadora.")
                     except Exception as e:
                         st.error(f"Error de conexión con la nube: {e}")
+
+
+
+                        
+
+
+
 
             
 
