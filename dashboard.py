@@ -39,7 +39,7 @@ if not st.session_state["sesion_activa"]:
     st.markdown("<br><br><h2 style='text-align: center; color: #1A365D;'>🔒 ERP Gerencial Planta - Inicio de Sesión</h2>", unsafe_allow_html=True)
     c_izq, c_cen, c_der = st.columns(3) # CORREGIDO: columns(3) evita errores de ejecución
     with c_cen:
-        st.write("Introduce las credenciales para desbloquear los paneles del sistema:")
+        st.write("Introduce las credenciales para desbloquear los paneles del sistema v1.00:")
         usuario_inp = st.text_input("Usuario (admin o gerente):")
         clave_inp = st.text_input("Contraseña:", type="password")
         btn_entrar = st.button("Ingresar al Sistema ERP", use_container_width=True)
@@ -57,28 +57,53 @@ st.sidebar.markdown("<h2 style='margin-top:-10px;'>PLANTA</h2><p style='text-ali
 st.sidebar.markdown(f"👤 **Usuario:** {st.session_state['usuario_actual']}")
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-@st.cache_data
+# --- 3. MOTOR DE CARGA ULTRA-ESTRICTO (SIEMPRE LEE EL PARQUET) ---
+@st.cache_data(ttl=60)  # ttl=60 hace que la caché expire sola cada 60 segundos por seguridad
 def cargar_datos_sistema():
-    if os.path.exists("planta_historico.parquet"):
-        try: return pd.read_parquet("planta_historico.parquet")
-        except: pass
+    archivo_parquet = "planta_historico.parquet"
+    
+    # FORZADO: Si el archivo Parquet existe, se lee directamente sin mirar nada más
+    if os.path.exists(archivo_parquet):
+        try: 
+            df_parquet = pd.read_parquet(archivo_parquet)
+            if not df_parquet.empty:
+                return df_parquet
+        except Exception as e:
+            # Si el parquet se daña por alguna razón, dejamos un aviso para soporte
+            st.sidebar.error(f"Error crítico leyendo Parquet: {e}")
+            pass
+
+    # PLAN B: Solo si el Parquet NO existe (primera vez que instalas la app), procesa el TXT
     if os.path.exists("DespBoard.txt"):
         try:
-            df = pd.read_csv("DespBoard.txt", sep="\t", encoding="latin1")
+            df = pd.read_csv("DespBoard.txt", sep="\t", encoding="latin1", low_memory=False)
+            
+            # Homologación estricta obligatoria
             df['FECHA'] = pd.to_datetime(df['FECHA'], errors='coerce')
             df['AÑO'] = pd.to_numeric(df['AÑO'], errors='coerce').fillna(0).astype(int)
             df['DIA'] = pd.to_numeric(df['DIA'], errors='coerce').fillna(0).astype(int)
             df['NODIA'] = pd.to_numeric(df['NODIA'], errors='coerce').fillna(0).astype(int)
-            if 'DOCUMENTO' in df.columns: df['DOCUMENTO'] = df['DOCUMENTO'].astype(str).str.strip()
+            
+            if 'DOCUMENTO' in df.columns: 
+                df['DOCUMENTO'] = df['DOCUMENTO'].astype(str).str.strip()
             for col in ['NOMBRE TIENDA', 'MES', 'FAMILIA', 'GRUPO', 'DESCRIPCION']:
-                if col in df.columns: df[col] = df[col].astype(str).fillna("No Especificado").str.strip()
+                if col in df.columns: 
+                    df[col] = df[col].astype(str).fillna("No Especificado").str.strip()
             for col in ['VALOR-ENVIADO', 'COSTO', 'VALOR', 'CANTIDAD-ENV', 'CANTIDAD-REQ']:
-                if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                if col in df.columns: 
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
             df['RETORNO-NETO'] = df['VALOR-ENVIADO'] - df['COSTO']
+            
+            # Auto-creamos el Parquet inmediatamente para que la próxima vez use la vía rápida
+            df.to_parquet(archivo_parquet, index=False)
             return df
-        except: pass
+        except:
+            pass
+            
     return pd.DataFrame()
 
+# Ejecución de la carga global
 df = cargar_datos_sistema()
 
 if df.empty:
