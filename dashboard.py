@@ -10,24 +10,66 @@ import numpy as np
 st.set_page_config(page_title="Dashboard Planta", layout="wide")
 
 # --- 1. ESTILOS CORPORATIVOS PREMIUM DE BRUSELAS (TEXTO VISIBLE BLANCO/DORADO) ---
+# --- 1. ESTILOS CORPORATIVOS PREMIUM DE BRUSELAS (CORRECCIÓN DE MENÚ DEFINITIVA) ---
 st.markdown("""
     <style>
+    /* Configuración base de la app y la barra lateral */
     .stApp { background-color: #FAF8F5 !important; font-family: sans-serif !important; }
     section[data-testid="stSidebar"] { background-color: #111B24 !important; min-width: 270px !important; }
     section[data-testid="stSidebar"] h2 { color: #E6C280 !important; font-family: serif !important; letter-spacing: 2px !important; text-align: center !important; }
     section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] label { color: #FFFFFF !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] label p { color: #FFFFFF !important; font-size: 0.95rem !important; font-weight: 600 !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] [data-checked="true"] label p { color: #E6C280 !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] label { background-color: transparent !important; padding: 12px 15px !important; display: flex; border-left: 4px solid transparent !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] label:hover, div[data-testid="stRadio"] div[role="radiogroup"] [data-checked="true"] label { background-color: #1B2A36 !important; border-left: 4px solid #E6C280 !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] [data-testid="stWidgetMarkdownInsideLabel"]::before { display: none !important; }
-    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] { display: none !important; }
+    
+    /* 🔴 REPARACIÓN INMEDIATA DEL TEXTO DEL MENÚ LATERAL 🔴 */
+    /* Este selector fuerza el color blanco en los textos del radio button dentro del sidebar */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label [data-testid="stWidgetMarkdownInsideLabel"] p {
+        color: #FFFFFF !important;
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+    }
+
+    /* Cambia a Dorado Premium el texto de la opción que se encuentre seleccionada actualmente */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] [data-checked="true"] label [data-testid="stWidgetMarkdownInsideLabel"] p {
+        color: #E6C280 !important;
+    }
+
+    /* Formato de las filas del menú */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label { 
+        background-color: transparent !important; 
+        padding: 12px 15px !important; 
+        display: flex; 
+        border-left: 4px solid transparent !important; 
+    }
+    
+    /* Efecto Hover al pasar el mouse y borde dorado al estar activo */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] label:hover, 
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] [data-checked="true"] label { 
+        background-color: #1B2A36 !important; 
+        border-left: 4px solid #E6C280 !important; 
+    }
+    
+    /* Ocultar círculos nativos de selección para mantener interfaz limpia */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] [data-testid="stWidgetMarkdownInsideLabel"]::before { 
+        display: none !important; 
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] { 
+        display: none !important; 
+    }
+    
+    /* Estilos de Tarjetas Métricas (KPIs) */
     div[data-testid="stMetric"] { background-color: #FFFFFF !important; border: 1px solid #EAE6DF !important; border-top: 4px solid #C29B68 !important; border-radius: 12px !important; padding: 20px 15px !important; }
     div[data-testid="stMetricLabel"] p { font-size: 0.75rem !important; text-transform: uppercase !important; color: #8C857B !important; font-weight: 600 !important; }
     div[data-testid="stMetricValue"] div { font-size: 1.9rem !important; font-weight: 700 !important; color: #1A365D !important; }
+    
+    /* Estilos del Contenedor e Inferior de Botón Cerrar Sesión */
     .sidebar-bottom-container { position: fixed; bottom: 20px; width: 230px; background-color: #111B24; padding-top: 10px; border-top: 1px solid #1B2A36; z-index: 999; }
     .sidebar-bottom-container button, section[data-testid="stSidebar"] button { background-color: #1B2A36 !important; color: #E6C280 !important; border: 1px solid #E6C280 !important; width: 100% !important; font-weight: 700 !important; }
     .sidebar-bottom-container button:hover, section[data-testid="stSidebar"] button:hover { background-color: #E6C280 !important; color: #111B24 !important; }
+    
+    /* SEPARADOR PARA EL CUERPO PRINCIPAL: Mantiene los botones de la página independientes y legibles */
+    div[data-testid="stAppViewContainer"] div[data-testid="stRadio"] div[role="radiogroup"] label [data-testid="stWidgetMarkdownInsideLabel"] p { 
+        color: #1A365D !important; 
+        font-weight: 500 !important; 
+    }
     </style>
 """, unsafe_allow_html=True)
 
