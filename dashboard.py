@@ -81,7 +81,7 @@ if not st.session_state["sesion_activa"]:
     st.markdown("<br><br><h2 style='text-align: center; color: #1A365D;'>🔒 ERP Gerencial Planta - Inicio de Sesión</h2>", unsafe_allow_html=True)
     c_izq, c_cen, c_der = st.columns(3) # CORREGIDO: columns(3) evita errores de ejecución
     with c_cen:
-        st.write("Introduce las credenciales para desbloquear los paneles del sistema v1.00:")
+        st.write("Introduce las credenciales para desbloquear los paneles del sistema v2.00:")
         usuario_inp = st.text_input("Usuario (admin o gerente):")
         clave_inp = st.text_input("Contraseña:", type="password")
         btn_entrar = st.button("Ingresar al Sistema ERP", use_container_width=True)
@@ -202,10 +202,66 @@ if opcion_menu == "📊 Resumen Ceo Diario" and not df.empty:
     col3.metric("Fill Rate %", f"{(df_f['VALOR-ENVIADO'].sum() / df_f['VALOR'].sum() * 100 if df_f['VALOR'].sum() > 0 else 0):.2f}%")
     
     df_d = df_f.groupby('NODIA').agg({'VALOR-ENVIADO':'sum', 'VALOR':'sum'}).reset_index()
+    
+    # Valores en miles (K) exactos para las gráficas
+    df_d['ENVIADO_K'] = df_d['VALOR-ENVIADO'] / 1000
+    df_d['REQUERIDO_K'] = df_d['VALOR'] / 1000
+    
+    # Cálculo exacto de la tasa de cumplimiento diaria
+    df_d['FR_PORCENTAJE'] = (df_d['VALOR-ENVIADO'] / df_d['VALOR'] * 100).fillna(0)
+    
+    # NUEVO: Lógica de colores dinámicos para la alerta visual (< 80%)
+    # Si baja de 80% se pinta de Rojo (#FF4B4B), si es igual o mayor se queda en Naranja (#FFA500)
+    colores_fr = ['#FF4B4B' if x < 80.0 else '#FFA500' for x in df_d['FR_PORCENTAJE']]
+    
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=df_d['NODIA'], y=df_d['VALOR-ENVIADO'], name="Enviado", marker_color='#1f77b4', hovertemplate="Q%{y:,.1s}"))
-    fig.add_trace(go.Scatter(x=df_d['NODIA'], y=(df_d['VALOR-ENVIADO']/df_d['VALOR']*100).fillna(0), name="FR %", yaxis="y2", mode="lines+markers", line=dict(color="orange", width=3), hovertemplate="%{y:.1f}%"))
-    fig.update_layout(yaxis=dict(title="Q", tickformat=",.1s"), yaxis2=dict(title="%", overlaying="y", side="right", tickformat=".1f"), legend=dict(x=0, y=1.1, orientation="h"), hovermode="x unified")
+    
+    # MODIFICACIÓN: Se añade customdata para inyectar el 'Valor Requerido' en el cuadro flotante de la barra
+    fig.add_trace(go.Bar(
+        x=df_d['NODIA'], 
+        y=df_d['ENVIADO_K'], 
+        name="Enviado", 
+        marker_color='#1f77b4',
+        customdata=df_d['REQUERIDO_K'],
+        hovertemplate="<b>Requerido:</b> Q%{customdata:,.1f}k<br><b>Enviado:</b> Q%{y:,.1f}k"
+    ))
+    
+    # MODIFICACIÓN: Trazado de línea con marcadores dinámicos que cambian a rojo si bajan de 80%
+    fig.add_trace(go.Scatter(
+        x=df_d['NODIA'], 
+        y=df_d['FR_PORCENTAJE'], 
+        name="FR %", 
+        yaxis="y2", 
+        mode="lines+markers", 
+        line=dict(color="#FFA500", width=3),
+        marker=dict(color=colores_fr, size=9, symbol="circle", line=dict(width=1, color="white")),
+        hovertemplate="<b>FR %:</b> %{y:.1f}%"
+    ))
+    
+    fig.update_layout(
+        yaxis=dict(title="Q (en miles)", tickformat=",.0f", ticksuffix="k"), 
+        yaxis2=dict(title="%", overlaying="y", side="right", tickformat=".1f", range=[0, 105]), 
+        legend=dict(x=0, y=1.1, orientation="h"), 
+        hovermode="x unified"
+    )
+    
+    # NUEVO: Añadimos una línea de referencia horizontal roja discontinua en el 80% en el eje derecho (y2)
+    fig.add_shape(
+        type="line",
+        xref="paper", yref="y2",
+        x0=0, x1=1, y0=80, y1=80,
+        line=dict(color="#FF4B4B", width=2, dash="dash")
+    )
+    
+    # NUEVO: Añadimos una etiqueta de texto sobre la línea de referencia del 80%
+    fig.add_annotation(
+        xref="paper", yref="y2",
+        x=0.98, y=82,
+        text="Límite Crítico (80%)",
+        showarrow=False,
+        font=dict(color="#FF4B4B", size=10, family="Arial Black")
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
     
     st.plotly_chart(px.pie(df_f.groupby('FAMILIA')['VALOR-ENVIADO'].sum().reset_index(), values='VALOR-ENVIADO', names='FAMILIA', hole=0.4, title="🍕 Por Familia"), use_container_width=True)
@@ -213,9 +269,28 @@ if opcion_menu == "📊 Resumen Ceo Diario" and not df.empty:
     df_t = df_f.groupby('NOMBRE TIENDA')['VALOR-ENVIADO'].sum().reset_index().sort_values(by='VALOR-ENVIADO')
     top = st.radio("Mostrar:", ["Top 10 Tiendas", "Top 20 Tiendas", "Todas"], index=1, horizontal=True)
     df_g = df_t.tail(10) if top == "Top 10 Tiendas" else (df_t.tail(20) if top == "Top 20 Tiendas" else df_t)
-    fig_t = px.bar(df_g, x='VALOR-ENVIADO', y='NOMBRE TIENDA', orientation='h', color='VALOR-ENVIADO', color_continuous_scale='Blues', text_auto=',.1s', title="🏪 Por Tienda")
-    fig_t.update_layout(xaxis=dict(tickformat=",.1s"), height=300+(len(df_g)*20), coloraxis_showscale=False)
+    
+    df_g['ENVIADO_TIENDA_K'] = df_g['VALOR-ENVIADO'] / 1000
+    
+    fig_t = px.bar(
+        df_g, 
+        x='ENVIADO_TIENDA_K', 
+        y='NOMBRE TIENDA', 
+        orientation='h', 
+        color='VALOR-ENVIADO', 
+        color_continuous_scale='Blues', 
+        text_auto=',.1f', 
+        title="🏪 Por Tienda (Valores en Miles K)"
+    )
+    
+    fig_t.update_layout(
+        xaxis=dict(tickformat=",.0f", ticksuffix="k"), 
+        height=300+(len(df_g)*20), 
+        coloraxis_showscale=False
+    )
     st.plotly_chart(fig_t, use_container_width=True)
+
+
 
     # fin parte 1 caja 2
 
