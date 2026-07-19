@@ -220,7 +220,7 @@ if opcion_menu == "📊 Resumen Ceo Diario" and not df.empty:
     fig.add_trace(go.Bar(
         x=df_d['NODIA'], 
         y=df_d['ENVIADO_K'], 
-        name="Enviado", 
+        name="", 
         marker_color='#1f77b4',
         customdata=df_d['REQUERIDO_K'],
         hovertemplate="<b>Requerido:</b> Q%{customdata:,.1f}k<br><b>Enviado:</b> Q%{y:,.1f}k"
@@ -257,7 +257,7 @@ if opcion_menu == "📊 Resumen Ceo Diario" and not df.empty:
     fig.add_annotation(
         xref="paper", yref="y2",
         x=0.98, y=82,
-        text="Límite Crítico (80%)",
+        text="(80%)",
         showarrow=False,
         font=dict(color="#FF4B4B", size=10, family="Arial Black")
     )
