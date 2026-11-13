@@ -81,7 +81,7 @@ if not st.session_state["sesion_activa"]:
     st.markdown("<br><br><h2 style='text-align: center; color: #1A365D;'>🔒 ERP Gerencial Planta - Inicio de Sesión</h2>", unsafe_allow_html=True)
     c_izq, c_cen, c_der = st.columns(3) # CORREGIDO: columns(3) evita errores de ejecución
     with c_cen:
-        st.write("Introduce las credenciales para desbloquear los paneles del sistema v2.00:")
+        st.write("Introduce las credenciales para desbloquear los paneles del sistema v2.03:")
         usuario_inp = st.text_input("Usuario (admin o gerente):")
         clave_inp = st.text_input("Contraseña:", type="password")
         btn_entrar = st.button("Ingresar al Sistema ERP", use_container_width=True)
@@ -352,13 +352,17 @@ if opcion_menu == "📈 Resumen Ceo & Proyecciones":
     
     # Determinar el último mes registrado para proyectar el siguiente
     if not df_mensual.empty:
-        ultimo_mes_nombre = df_mensual.iloc[-1]['MES']
+        ultimo_mes_nombre = df_mensual.iloc[-2]['MES']
         ultimo_idx = orden_meses.get(ultimo_mes_nombre.upper(), 6)
+
+        # idx_siguiente = (ultimo_idx % 12) + ((2*ultimo_idx < 12)+(1*ultimo_idx == 12))
+        
         idx_siguiente = (ultimo_idx % 12) + 1
+              
         mes_siguiente_nombre = [k for k, v in orden_meses.items() if v == idx_siguiente][0]
         
-        monto_ultimo_mes = df_mensual.iloc[-1]['VALOR-ENVIADO']
-        # Proyección del mes siguiente aplicando crecimiento inercial (+5%)
+        monto_ultimo_mes = df_mensual.iloc[-2]['VALOR-ENVIADO']
+       
         monto_proyectado_mes_siguiente = monto_ultimo_mes * 1.05
     else:
         mes_siguiente_nombre = "SIGUIENTE"
